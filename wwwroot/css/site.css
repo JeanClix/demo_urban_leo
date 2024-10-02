@@ -134,7 +134,7 @@
     display: none;
 }
 
-@media screen and (max-width: 970px) {
+@media screen and (max-width: 1210px) {
     .caja_buscador {
         position: absolute;
         right: 230px;
