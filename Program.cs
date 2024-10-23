@@ -5,6 +5,7 @@ using urban_leo.Service;
 //mio
 using Npgsql.EntityFrameworkCore.PostgreSQL;
 using Microsoft.OpenApi.Models;
+using urban_leo.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 /* Add services to the container.
@@ -28,6 +29,7 @@ builder.Services.AddControllersWithViews();
 
 //Registro mi logica 
 builder.Services.AddScoped<ProductoService, ProductoService>();
+builder.Services.AddSingleton<CartService>();
 //api
 builder.Services.AddScoped<urban_leo.Integration.CurrencyExchange.CurrencyExchangeIntegration>();
 
