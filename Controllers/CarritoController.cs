@@ -135,75 +135,115 @@ namespace urban_leo.Controllers
             }
         }
 
-        public async Task<IActionResult> Delete(int? id)
+        [HttpGet]
+        public async Task<IActionResult> Delete(int? id, string talla)
         {
-            if (id == null)
+            if (id == null || string.IsNullOrEmpty(talla))
             {
                 return NotFound();
             }
 
-            var itemCarrito = await _context.DataItemCarrito.FindAsync(id);
-            if (itemCarrito == null)
+            var itemsCarrito = await _context.DataItemCarrito
+                .Where(c => c.Producto.Id == id && c.Talla == talla)
+                .ToListAsync();
+
+            if (!itemsCarrito.Any())
             {
                 return NotFound();
             }
 
-            _context.DataItemCarrito.Remove(itemCarrito);
+            _context.DataItemCarrito.RemoveRange(itemsCarrito);
             await _context.SaveChangesAsync();
 
-            await UpdateCartTotalItems(itemCarrito.UserID);
+            await UpdateCartTotalItems(itemsCarrito.First().UserID);
 
             return RedirectToAction(nameof(Index));
         }
 
-        public async Task<IActionResult> Edit(int? id)
+    [HttpGet]
+    public async Task<IActionResult> Edit(int id, string talla)
+    {
+        if (id == 0)
         {
-            if (id == null)
-            {
-                return NotFound();
-            }
-
-            var itemCarrito = await _context.DataItemCarrito.FindAsync(id);
-            if (itemCarrito == null)
-            {
-                return NotFound();
-            }
-            return View(itemCarrito);
+            return NotFound();
         }
 
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Edit(int id, [Bind("Id,UserID,Precio,Talla,Cantidad")] Carrito itemCarrito)
+        var user = await _userManager.GetUserAsync(User);
+        if (user == null)
         {
-            if (id != itemCarrito.Id)
+            return RedirectToAction("Index", "Home");
+        }
+
+        var itemCarrito = await _context.DataItemCarrito
+            .Include(c => c.Producto)
+            .FirstOrDefaultAsync(c => c.Producto.Id == id && c.Talla == talla && c.UserID == user.Email);
+
+        if (itemCarrito == null)
+        {
+            return NotFound();
+        }
+
+        return View(itemCarrito);
+    }
+
+    // Método POST para procesar la edición
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> EditCarrito(int id, [Bind("Cantidad,Talla,UserID,Precio,Estado")] Carrito itemCarrito)
+    {
+        var user = await _userManager.GetUserAsync(User);
+        if (user == null || user.Email != itemCarrito.UserID)
+        {
+            return RedirectToAction("Index", "Home");
+        }
+
+        try
+        {
+            // Buscar los items existentes
+            var existingItems = await _context.DataItemCarrito
+                .Include(c => c.Producto)
+                .Where(c => c.Producto.Id == id && c.UserID == user.Email)
+                .ToListAsync();
+
+            if (!existingItems.Any())
             {
                 return NotFound();
             }
 
-            if (ModelState.IsValid)
-            {
-                try
-                {
-                    _context.Update(itemCarrito);
-                    await _context.SaveChangesAsync();
+            // Eliminar los items existentes
+            _context.DataItemCarrito.RemoveRange(existingItems);
+            await _context.SaveChangesAsync();
 
-                    await UpdateCartTotalItems(itemCarrito.UserID);
-                }
-                catch (DbUpdateConcurrencyException)
-                {
-                    if (!_context.DataItemCarrito.Any(e => e.Id == id))
-                    {
-                        return NotFound();
-                    }
-                    else
-                    {
-                        throw;
-                    }
-                }
-                return RedirectToAction(nameof(Index));
+            // Crear nuevo item con la talla actualizada
+            var producto = await _context.DataProducto.FindAsync(id);
+            if (producto == null)
+            {
+                return NotFound();
             }
-            return View(itemCarrito);
+
+            var nuevoItem = new Carrito
+            {
+                Producto = producto,
+                Cantidad = itemCarrito.Cantidad,
+                Talla = itemCarrito.Talla,
+                Precio = itemCarrito.Precio,
+                UserID = user.Email,
+                Estado = "PENDIENTE"
+            };
+
+            _context.Add(nuevoItem);
+            await _context.SaveChangesAsync();
+            await UpdateCartTotalItems(user.Email);
+
+            TempData["Message"] = "Producto actualizado exitosamente";
+            return RedirectToAction(nameof(Index));
         }
+        catch (DbUpdateConcurrencyException)
+        {
+            TempData["Error"] = "Error al actualizar el producto";
+            return RedirectToAction(nameof(Index));
+        }
+    }
 
         private async Task UpdateCartTotalItems(string userEmail)
         {
